@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: docker.io/pgvector/pgvector:pg16
+    container_name: localbrain-postgres
+    environment:
+      POSTGRES_DB: ${LOCALBRAIN_POSTGRES_DB:-localbrain}
+      POSTGRES_USER: ${LOCALBRAIN_POSTGRES_USER:-localbrain}
+      POSTGRES_PASSWORD: ${LOCALBRAIN_POSTGRES_PASSWORD:-change-me}
+      VECTOR_DIM: ${LOCALBRAIN_VECTOR_DIM:-768}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LOCALBRAIN_POSTGRES_USER:-localbrain} -d ${LOCALBRAIN_POSTGRES_DB:-localbrain}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  ollama:
+    image: docker.io/ollama/ollama:latest
+    container_name: localbrain-ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
+
+  ollama-init:
+    image: docker.io/ollama/ollama:latest
+    container_name: localbrain-ollama-init
+    depends_on:
+      - ollama
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - >
+        until OLLAMA_HOST=http://ollama:11434 ollama list >/dev/null 2>&1; do
+          sleep 2;
+        done &&
+        OLLAMA_HOST=http://ollama:11434 ollama pull ${LOCALBRAIN_EMBEDDING_MODEL:-nomic-embed-text} &&
+        OLLAMA_HOST=http://ollama:11434 ollama pull ${LOCALBRAIN_CHAT_MODEL:-qwen2.5:3b}
+    restart: "no"
+
+  mcp-server:
+    build:
+      context: ./server
+    container_name: localbrain-mcp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+    environment:
+      PORT: 8000
+      MCP_ACCESS_KEY: ${LOCALBRAIN_MCP_ACCESS_KEY:-change-me-too}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${LOCALBRAIN_POSTGRES_DB:-localbrain}
+      DB_USER: ${LOCALBRAIN_POSTGRES_USER:-localbrain}
+      DB_PASSWORD: ${LOCALBRAIN_POSTGRES_PASSWORD:-change-me}
+      MODEL_API_BASE: ${LOCALBRAIN_MODEL_API_BASE:-http://ollama:11434/v1}
+      MODEL_API_KEY: ${LOCALBRAIN_MODEL_API_KEY:-ollama}
+      EMBEDDING_MODEL: ${LOCALBRAIN_EMBEDDING_MODEL:-nomic-embed-text}
+      CHAT_MODEL: ${LOCALBRAIN_CHAT_MODEL:-qwen2.5:3b}
+      VECTOR_DIM: ${LOCALBRAIN_VECTOR_DIM:-768}
+    ports:
+      - "${LOCALBRAIN_PORT:-8000}:8000"
+
+volumes:
+  postgres-data:
+  ollama-data:

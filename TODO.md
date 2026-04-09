@@ -1,0 +1,10 @@
+- add connection to codex, OpenClaw, or other via mcp
+- look into replacing MCP server with rebuilt container
+- Add ELI5 instructions
+- Documentation
+- Test deployment 
+- Test OpenBrain recipe & skill compatibility
+- Test repo cloning from local to github / codeberg
+- Security testing & hardening
+- check OpenBrain licensing & update accordingly
+- Look into supporting openrouter in place of ollama
